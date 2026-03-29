@@ -1,0 +1,201 @@
+{
+  "name": "rsync-upload",
+  "displayName": "Rsync Upload",
+  "description": "Fast rsync uploads from local Mac to remote SSH server. Cmd+Shift+U to upload.",
+  "version": "0.8.0",
+  "extensionKind": ["ui"],
+  "publisher": "dricpro",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZW471/rsync-upload"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:rsyncUpload.upload",
+    "onCommand:rsyncUpload.uploadWorkspace",
+    "onCommand:rsyncUpload.toggleUploadOnSave",
+    "onCommand:rsyncUpload.stopTransfer",
+    "onCommand:rsyncUpload.stopAndDelete",
+    "onCommand:rsyncUpload.showLog"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rsyncUpload.upload",
+        "title": "Upload via Rsync...",
+        "icon": "$(cloud-upload)",
+        "category": "Rsync Upload"
+      },
+      {
+        "command": "rsyncUpload.uploadWorkspace",
+        "title": "Upload Workspace via Rsync",
+        "icon": "$(cloud-upload)",
+        "category": "Rsync Upload"
+      },
+      {
+        "command": "rsyncUpload.toggleUploadOnSave",
+        "title": "Toggle Upload on Save",
+        "category": "Rsync Upload"
+      },
+      {
+        "command": "rsyncUpload.stopTransfer",
+        "title": "Stop Transfer (Keep Partial)",
+        "icon": "$(debug-stop)",
+        "category": "Rsync Upload"
+      },
+      {
+        "command": "rsyncUpload.stopAndDelete",
+        "title": "Stop Transfer & Delete Remote Files",
+        "icon": "$(trash)",
+        "category": "Rsync Upload"
+      },
+      {
+        "command": "rsyncUpload.showLog",
+        "title": "Show Rsync Log",
+        "category": "Rsync Upload"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "rsyncUpload.upload",
+        "key": "ctrl+shift+u",
+        "mac": "cmd+shift+u"
+      },
+      {
+        "command": "rsyncUpload.stopTransfer",
+        "key": "ctrl+shift+escape",
+        "mac": "cmd+shift+escape"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "rsyncUpload.upload",
+          "group": "rsyncUpload@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "rsyncUpload.upload",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "rsyncUpload.upload",
+          "group": "rsyncUpload@1"
+        }
+      ],
+      "commandPalette": [
+        { "command": "rsyncUpload.upload" },
+        { "command": "rsyncUpload.uploadWorkspace" },
+        { "command": "rsyncUpload.toggleUploadOnSave" },
+        { "command": "rsyncUpload.stopTransfer" },
+        { "command": "rsyncUpload.stopAndDelete" },
+        { "command": "rsyncUpload.showLog" }
+      ]
+    },
+    "configuration": {
+      "title": "Rsync Upload",
+      "properties": {
+        "rsyncUpload.autoDetect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-detect SSH host, port, and path from Remote SSH connection. Disable to use manual settings only."
+        },
+        "rsyncUpload.remoteHost": {
+          "type": "string",
+          "default": "",
+          "description": "SSH host, e.g. user@hostname (auto-detected from Remote SSH if empty)"
+        },
+        "rsyncUpload.remotePath": {
+          "type": "string",
+          "default": "",
+          "description": "Remote absolute path (auto-detected if empty)"
+        },
+        "rsyncUpload.localPath": {
+          "type": "string",
+          "default": "${workspaceFolder}",
+          "description": "Local root path to sync from"
+        },
+        "rsyncUpload.uploadOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically upload files on save"
+        },
+        "rsyncUpload.uploadOnSaveDelay": {
+          "type": "number",
+          "default": 500,
+          "description": "Debounce delay in ms for upload on save"
+        },
+        "rsyncUpload.flags": {
+          "type": "string",
+          "default": "-avz --partial --progress",
+          "description": "Rsync flags"
+        },
+        "rsyncUpload.exclude": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [".git", "node_modules", "__pycache__", ".venv", "*.pyc"],
+          "description": "Exclude patterns passed to rsync --exclude"
+        },
+        "rsyncUpload.include": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Include patterns passed to rsync --include"
+        },
+        "rsyncUpload.sshKeyPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to SSH private key (falls back to ~/.ssh/id_rsa if empty)"
+        },
+        "rsyncUpload.sshPort": {
+          "type": "number",
+          "default": 22,
+          "description": "SSH port (auto-detected from ~/.ssh/config if default)"
+        },
+        "rsyncUpload.rsyncPath": {
+          "type": "string",
+          "default": "rsync",
+          "description": "Path to rsync binary"
+        },
+        "rsyncUpload.delete": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use --delete to remove remote files not present locally"
+        },
+        "rsyncUpload.dryRun": {
+          "type": "boolean",
+          "default": false,
+          "description": "Preview transfers without actually uploading"
+        },
+        "rsyncUpload.sshMultiplexing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SSH connection multiplexing for faster repeated uploads"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "ssh-config": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
