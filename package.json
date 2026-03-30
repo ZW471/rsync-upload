@@ -4,7 +4,7 @@
   "description": "Fast rsync uploads from local Mac to remote SSH server. Cmd+Shift+U to upload.",
   "version": "0.8.0",
   "extensionKind": ["ui"],
-  "publisher": "dricpro",
+  "publisher": "Dri",
   "repository": {
     "type": "git",
     "url": "https://github.com/ZW471/rsync-upload"
