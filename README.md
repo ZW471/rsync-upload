@@ -85,12 +85,27 @@ The extension runs **locally** on your Mac (`extensionKind: ["ui"]`). When you t
 
 Since rsync uses `--partial`, interrupted transfers leave partial files on the server. Re-running the upload automatically resumes from where it left off.
 
+## Password Authentication
+
+The extension prefers SSH key authentication. If your server requires a **password**, the extension will detect the auth failure on the first try and **prompt you for the password on the fly** — no setup or external tools required.
+
+How it works:
+1. Extension attempts the upload (using your SSH keys / agent)
+2. If the server rejects key auth, an input box pops up asking for the password
+3. The password is passed to OpenSSH via the built-in `SSH_ASKPASS` mechanism — no third-party libraries
+4. The extension then offers to either remember it for the session only, or save it persistently in macOS Keychain (via VS Code's SecretStorage)
+5. Subsequent uploads to the same host reuse the cached password
+
+To clear a saved password: `Cmd+Shift+P` > **Rsync Upload: Clear Saved Password for Current Host**.
+
+> No `sshpass` or any other external tool is required. The extension uses only built-in `ssh` and `rsync`.
+
 ## Requirements
 
 - **macOS** (client side)
 - **rsync** — pre-installed on macOS (`openrsync`)
-- **SSH key authentication** configured in `~/.ssh/config`
-- **VS Code Remote SSH** extension (for auto-detection; or configure manually)
+- **OpenSSH 8.4+** — pre-installed on macOS (needed for `SSH_ASKPASS_REQUIRE=force`)
+- **VS Code Remote SSH** extension (for auto-detection; or configure host manually)
 
 ## License
 

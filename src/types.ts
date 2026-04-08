@@ -24,6 +24,8 @@ export interface RsyncConfig {
   uploadOnSaveDelay: number;
   /** When true, remoteHost is an SSH config alias — skip manual -p/-i flags */
   usingSshAlias: boolean;
+  /** Optional password (loaded from SecretStorage at runtime, not from settings) */
+  password?: string;
 }
 
 export interface TransferProgress {

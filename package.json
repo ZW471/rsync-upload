@@ -2,7 +2,7 @@
   "name": "rsync-upload",
   "displayName": "Rsync Upload",
   "description": "Fast rsync uploads from local Mac to remote SSH server. Cmd+Shift+U to upload.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "extensionKind": ["ui"],
   "publisher": "Dri",
   "repository": {
@@ -20,7 +20,9 @@
     "onCommand:rsyncUpload.toggleUploadOnSave",
     "onCommand:rsyncUpload.stopTransfer",
     "onCommand:rsyncUpload.stopAndDelete",
-    "onCommand:rsyncUpload.showLog"
+    "onCommand:rsyncUpload.showLog",
+    "onCommand:rsyncUpload.setPassword",
+    "onCommand:rsyncUpload.clearPassword"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -57,6 +59,16 @@
       {
         "command": "rsyncUpload.showLog",
         "title": "Show Rsync Log",
+        "category": "Rsync Upload"
+      },
+      {
+        "command": "rsyncUpload.setPassword",
+        "title": "Set Password for Current Host",
+        "category": "Rsync Upload"
+      },
+      {
+        "command": "rsyncUpload.clearPassword",
+        "title": "Clear Saved Password for Current Host",
         "category": "Rsync Upload"
       }
     ],
@@ -97,7 +109,9 @@
         { "command": "rsyncUpload.toggleUploadOnSave" },
         { "command": "rsyncUpload.stopTransfer" },
         { "command": "rsyncUpload.stopAndDelete" },
-        { "command": "rsyncUpload.showLog" }
+        { "command": "rsyncUpload.showLog" },
+        { "command": "rsyncUpload.setPassword" },
+        { "command": "rsyncUpload.clearPassword" }
       ]
     },
     "configuration": {

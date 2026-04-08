@@ -1,23 +1,6 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 import { RsyncConfig, SshConnectionInfo } from './types';
 import { log } from './outputChannel';
-
-/** Find a default SSH key if none is configured */
-function findDefaultSshKey(): string {
-  const sshDir = path.join(os.homedir(), '.ssh');
-  // Try common key names in order of preference
-  for (const name of ['id_rsa', 'id_ed25519', 'id_ecdsa', 'id_dsa']) {
-    const keyPath = path.join(sshDir, name);
-    if (fs.existsSync(keyPath)) {
-      log(`Using default SSH key: ${keyPath}`);
-      return keyPath;
-    }
-  }
-  return '';
-}
 
 export function resolveConfig(sshInfo: SshConnectionInfo | null): RsyncConfig {
   const cfg = vscode.workspace.getConfiguration('rsyncUpload');
@@ -65,8 +48,9 @@ export function resolveConfig(sshInfo: SshConnectionInfo | null): RsyncConfig {
   } else if (effectiveSshInfo?.identityFile) {
     sshKeyPath = effectiveSshInfo.identityFile;
   } else {
-    // Fall back to default SSH key (~/.ssh/id_rsa, etc.)
-    sshKeyPath = findDefaultSshKey();
+    // No explicit key — leave empty so SSH tries all default keys in ~/.ssh/
+    // (id_rsa, id_ed25519, etc.) just like `ssh hostname` does from a terminal.
+    sshKeyPath = '';
   }
 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';

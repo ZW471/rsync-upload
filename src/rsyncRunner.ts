@@ -146,11 +146,33 @@ export class RsyncRunner {
 
     parts.push(`-p ${this.config.sshPort}`);
 
-    if (this.config.sshKeyPath) {
+    // Fail fast on unreachable hosts instead of hanging for the default 75s
+    parts.push('-o ConnectTimeout=10');
+
+    // Auto-accept new host keys (no interactive prompt for unknown hosts)
+    parts.push('-o StrictHostKeyChecking=accept-new');
+
+    if (this.config.password && this.askpassScriptPath) {
+      // Password mode — skip key auth entirely so we don't waste time trying
+      // every key in ~/.ssh/ over a slow link before falling back to password.
+      parts.push('-o PreferredAuthentications=password,keyboard-interactive');
+      parts.push('-o PubkeyAuthentication=no');
+      parts.push('-o NumberOfPasswordPrompts=1');
+    } else if (this.config.sshKeyPath) {
+      // Key mode — only try the configured key, no others
       parts.push(`-i ${this.config.sshKeyPath}`);
+      parts.push('-o IdentitiesOnly=yes');
     }
 
     return parts.join(' ');
+  }
+
+  /** Path to the askpass helper script — set by extension at activation */
+  askpassScriptPath = '';
+
+  /** Update the password without rebuilding the whole config */
+  setPassword(password: string | undefined): void {
+    this.config = { ...this.config, password };
   }
 
   private enqueue(args: string[], onProgress?: ProgressCallback): Promise<TransferResult> {
@@ -184,8 +206,27 @@ export class RsyncRunner {
       const cmdLine = `${this.config.rsyncPath} ${args.join(' ')}`;
       log(`Executing: ${cmdLine}`);
 
+      const childEnv: NodeJS.ProcessEnv = { ...process.env };
+
+      if (this.config.password && this.askpassScriptPath) {
+        // SSH will run our helper script when it needs a password.
+        // The script reads RSYNC_UPLOAD_PASSWORD from its environment.
+        childEnv.SSH_ASKPASS = this.askpassScriptPath;
+        childEnv.SSH_ASKPASS_REQUIRE = 'force'; // OpenSSH 8.4+
+        childEnv.DISPLAY = childEnv.DISPLAY || ':0';
+        childEnv.RSYNC_UPLOAD_PASSWORD = this.config.password;
+      } else {
+        // No password mode — disable askpass entirely so SSH fails cleanly
+        // with an "auth required" error rather than hanging on a GUI prompt.
+        childEnv.SSH_ASKPASS_REQUIRE = 'never';
+        childEnv.DISPLAY = '';
+      }
+
       const proc = cp.spawn(this.config.rsyncPath, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
+        env: childEnv,
+        // Detach so SSH thinks it's not attached to a TTY (forces askpass path)
+        detached: !!this.config.password,
       });
       this.currentProcess = proc;
 

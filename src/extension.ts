@@ -9,11 +9,96 @@ import { ProgressReporter } from './progressReporter';
 import { StatusBar } from './statusBar';
 import { UploadOnSave } from './uploadOnSave';
 import { getOutputChannel, log, logError, dispose as disposeChannel } from './outputChannel';
-import { SshConnectionInfo } from './types';
+import { SshConnectionInfo, TransferResult } from './types';
 
 let runner: RsyncRunner | undefined;
 let uploadOnSave: UploadOnSave | undefined;
 let statusBar: StatusBar | undefined;
+
+const PASSWORD_KEY_PREFIX = 'rsyncUpload.password.';
+/** In-memory cache: host → password (cleared on VS Code restart) */
+const passwordCache = new Map<string, string>();
+
+async function loadPassword(secrets: vscode.SecretStorage, host: string): Promise<string | undefined> {
+  if (!host) return undefined;
+  if (passwordCache.has(host)) return passwordCache.get(host);
+  const stored = await secrets.get(PASSWORD_KEY_PREFIX + host);
+  if (stored) passwordCache.set(host, stored);
+  return stored;
+}
+
+/** Write a small askpass helper script that echoes $RSYNC_UPLOAD_PASSWORD */
+function createAskpassScript(context: vscode.ExtensionContext): string {
+  const dir = context.globalStorageUri.fsPath;
+  fs.mkdirSync(dir, { recursive: true });
+  const scriptPath = path.join(dir, 'askpass.sh');
+  const content = '#!/bin/sh\nprintf %s "$RSYNC_UPLOAD_PASSWORD"\n';
+  fs.writeFileSync(scriptPath, content, { mode: 0o700 });
+  // Ensure executable bit is set even if writeFileSync ignored mode
+  try { fs.chmodSync(scriptPath, 0o700); } catch { /* ignore */ }
+  return scriptPath;
+}
+
+/** Detect "auth failed / password required" type errors in rsync stderr */
+function isAuthError(error: string | undefined): boolean {
+  if (!error) return false;
+  // Match all common SSH auth-failure signatures. "Connection closed by ..."
+  // is also typically auth — the server hangs up after rejecting the client.
+  return /Permission denied|password|ssh_askpass|publickey|authentication|Connection closed by|Too many authentication/i.test(error);
+}
+
+/**
+ * Run an upload, and if it fails with an auth error, prompt the user for a
+ * password and retry once. The password is cached in memory for the session.
+ */
+async function runWithAuthRetry(
+  r: RsyncRunner,
+  host: string,
+  secrets: vscode.SecretStorage,
+  doUpload: () => Promise<TransferResult>
+): Promise<TransferResult> {
+  // Apply cached password (if any) before the first attempt
+  const cached = await loadPassword(secrets, host);
+  if (cached) r.setPassword(cached);
+
+  let result = await doUpload();
+  if (result.success || result.cancelled || !isAuthError(result.error)) {
+    return result;
+  }
+
+  // Auth failed — prompt for password
+  log(`Auth failed for ${host}, prompting for password...`);
+  const password = await vscode.window.showInputBox({
+    prompt: `SSH password for ${host}`,
+    password: true,
+    ignoreFocusOut: true,
+    placeHolder: 'Server requires a password — enter it to retry',
+  });
+  if (!password) return result;
+
+  // Cache in memory + apply to runner
+  passwordCache.set(host, password);
+  r.setPassword(password);
+
+  // Retry the upload with the password
+  const retried = await doUpload();
+
+  // Only offer to persist if the retry actually succeeded
+  if (retried.success) {
+    vscode.window.showInformationMessage(
+      `Password worked for ${host}. Save it across sessions?`,
+      'Save in Keychain',
+      'Just this session'
+    ).then((choice) => {
+      if (choice === 'Save in Keychain') {
+        secrets.store(PASSWORD_KEY_PREFIX + host, password);
+        log(`Password saved persistently for ${host}`);
+      }
+    });
+  }
+
+  return retried;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   try {
@@ -31,6 +116,10 @@ function doActivate(context: vscode.ExtensionContext): void {
 
   statusBar = new StatusBar();
   context.subscriptions.push({ dispose: () => statusBar?.dispose() });
+
+  // Create the askpass helper script (used for password auth)
+  const askpassScriptPath = createAskpassScript(context);
+  log(`Askpass helper: ${askpassScriptPath}`);
 
   // Check rsync
   try {
@@ -53,6 +142,14 @@ function doActivate(context: vscode.ExtensionContext): void {
   let config = resolveConfig(sshInfo);
   const isConfigured = !!(config.remoteHost && config.remotePath);
 
+  // Load saved password (if any) into the in-memory cache
+  loadPassword(context.secrets, config.remoteHost).then((pw) => {
+    if (pw) {
+      runner?.setPassword(pw);
+      log(`Loaded saved password for ${config.remoteHost}`);
+    }
+  });
+
   vscode.commands.executeCommand('setContext', 'rsyncUpload.isConnected', true);
 
   const displayHost = sshInfo?.hostAlias || config.remoteHost || 'not configured';
@@ -61,6 +158,7 @@ function doActivate(context: vscode.ExtensionContext): void {
     statusBar.setHost(displayHost);
     statusBar.showConnected(displayHost);
     runner = new RsyncRunner(config);
+    runner.askpassScriptPath = askpassScriptPath;
     log(`Configured: ${config.remoteHost}:${config.remotePath}`);
   } else {
     statusBar.hide();
@@ -93,6 +191,7 @@ function doActivate(context: vscode.ExtensionContext): void {
       return null;
     }
     runner = new RsyncRunner(config);
+    runner.askpassScriptPath = askpassScriptPath;
     statusBar?.setHost(config.remoteHost);
     statusBar?.showConnected(config.remoteHost);
     return runner;
@@ -159,7 +258,12 @@ function doActivate(context: vscode.ExtensionContext): void {
               dest = `${config.remoteHost}:${remoteDest}/`;
             }
 
-            const result = await r.uploadDirect(src, dest, onProgress);
+            const result = await runWithAuthRetry(
+              r,
+              config.remoteHost,
+              context.secrets,
+              () => r.uploadDirect(src, dest, onProgress)
+            );
             if (result.success) {
               totalFiles += result.filesTransferred || 1;
               totalBytes += result.totalBytes;
@@ -167,6 +271,7 @@ function doActivate(context: vscode.ExtensionContext): void {
               return { success: false, filesTransferred: totalFiles, totalBytes, elapsedMs: Date.now() - startTime, cancelled: true };
             } else {
               lastError = result.error;
+              break; // Stop on first non-auth failure
             }
           }
 
@@ -190,7 +295,12 @@ function doActivate(context: vscode.ExtensionContext): void {
       await progressReporter.runWithProgress(
         'Rsync: uploading workspace',
         r,
-        (onProgress) => r.uploadWorkspace(onProgress)
+        (onProgress) => runWithAuthRetry(
+          r,
+          config.remoteHost,
+          context.secrets,
+          () => r.uploadWorkspace(onProgress)
+        )
       );
     })
   );
@@ -250,15 +360,53 @@ function doActivate(context: vscode.ExtensionContext): void {
     })
   );
 
+  // ── Set password for current host (manual save) ──
+  context.subscriptions.push(
+    vscode.commands.registerCommand('rsyncUpload.setPassword', async () => {
+      if (!config.remoteHost) {
+        vscode.window.showErrorMessage('No remote host configured. Set rsyncUpload.remoteHost first.');
+        return;
+      }
+      const password = await vscode.window.showInputBox({
+        prompt: `Password for ${config.remoteHost}`,
+        password: true,
+        ignoreFocusOut: true,
+        placeHolder: 'Leave empty to cancel',
+      });
+      if (!password) return;
+      await context.secrets.store(PASSWORD_KEY_PREFIX + config.remoteHost, password);
+      passwordCache.set(config.remoteHost, password);
+      runner?.setPassword(password);
+      vscode.window.showInformationMessage(`Password saved for ${config.remoteHost}.`);
+      log(`Password stored for ${config.remoteHost}`);
+    })
+  );
+
+  // ── Clear saved password for current host ──
+  context.subscriptions.push(
+    vscode.commands.registerCommand('rsyncUpload.clearPassword', async () => {
+      if (!config.remoteHost) return;
+      await context.secrets.delete(PASSWORD_KEY_PREFIX + config.remoteHost);
+      passwordCache.delete(config.remoteHost);
+      runner?.setPassword(undefined);
+      vscode.window.showInformationMessage(`Password cleared for ${config.remoteHost}.`);
+      log(`Password cleared for ${config.remoteHost}`);
+    })
+  );
+
   // Config changes
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((e) => {
+    vscode.workspace.onDidChangeConfiguration(async (e) => {
       if (!e.affectsConfiguration('rsyncUpload')) return;
       config = resolveConfig(sshInfo);
       runner?.updateConfig(config);
+      // Reload password for current host
+      const pw = await loadPassword(context.secrets, config.remoteHost);
+      if (pw) runner?.setPassword(pw);
       uploadOnSave?.updateConfig(config);
       if (config.remoteHost && config.remotePath && !runner) {
         runner = new RsyncRunner(config);
+        runner.askpassScriptPath = askpassScriptPath;
         statusBar?.setHost(config.remoteHost);
         statusBar?.showConnected(config.remoteHost);
       }
@@ -286,6 +434,8 @@ function registerFallbackCommands(context: vscode.ExtensionContext, errorMsg: st
     'rsyncUpload.stopTransfer',
     'rsyncUpload.stopAndDelete',
     'rsyncUpload.showLog',
+    'rsyncUpload.setPassword',
+    'rsyncUpload.clearPassword',
   ]) {
     context.subscriptions.push(vscode.commands.registerCommand(cmd, showError));
   }
