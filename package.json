@@ -1,8 +1,8 @@
 {
   "name": "rsync-upload",
   "displayName": "Rsync Upload",
-  "description": "Fast rsync uploads from local Mac to remote SSH server. Cmd+Shift+U to upload.",
-  "version": "0.9.0",
+  "description": "Fast rsync uploads from local machine to remote SSH server. Cmd/Ctrl+Shift+U to upload.",
+  "version": "0.10.0",
   "extensionKind": ["ui"],
   "publisher": "Dri",
   "repository": {

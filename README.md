@@ -2,15 +2,21 @@
 
 A VS Code extension that replaces the painfully slow built-in SSH file upload with **rsync** — fast, compressed, and resumable.
 
-> **Client-side only.** This extension runs entirely on your local Mac. Nothing needs to be installed on the remote server — it just needs `rsync` and `sshd`, which are available on virtually all Linux/Unix servers by default.
+> **Client-side only.** This extension runs entirely on your local machine. Nothing needs to be installed on the remote server — it just needs `rsync` and `sshd`, which are available on virtually all Linux/Unix servers by default.
 
 ## Platform Support
 
-| Client (local) | Server (remote) |
-|---|---|
-| **macOS** (officially supported) | Any Linux/Unix with rsync + SSH |
+| Client (local) | File picker | Rsync requirement |
+|---|---|---|
+| **macOS** | Native Finder (AppleScript) | Pre-installed (`openrsync`) |
+| **Windows 10/11** | Native Explorer (PowerShell WinForms) | Install via [cwRsync](https://itefix.net/cwrsync), Git Bash, or WSL |
+| **Linux** | Native (zenity) | `sudo apt install rsync zenity` |
 
-> Windows and Linux client support is not yet available. The extension uses native macOS file picker dialogs (AppleScript).
+The extension auto-detects your OS and uses the right native file dialog and helper script automatically.
+
+| Server (remote) |
+|---|
+| Any Linux/Unix with rsync + SSH — nothing to install on the remote side |
 
 ## Features
 
@@ -25,10 +31,10 @@ A VS Code extension that replaces the painfully slow built-in SSH file upload wi
 
 ## Installation
 
-Download the `.vsix` from [Releases](https://github.com/dricpro/rsync-upload/releases) and install:
+Download the `.vsix` from [Releases](https://github.com/ZW471/rsync-upload/releases) and install:
 
 ```bash
-code --install-extension rsync-upload-0.8.0.vsix
+code --install-extension rsync-upload-0.10.0.vsix
 ```
 
 Or install from within VS Code: `Cmd+Shift+P` > `Extensions: Install from VSIX...`
@@ -102,10 +108,17 @@ To clear a saved password: `Cmd+Shift+P` > **Rsync Upload: Clear Saved Password 
 
 ## Requirements
 
-- **macOS** (client side)
-- **rsync** — pre-installed on macOS (`openrsync`)
-- **OpenSSH 8.4+** — pre-installed on macOS (needed for `SSH_ASKPASS_REQUIRE=force`)
+- **Client OS:** macOS, Windows 10/11, or Linux
+- **rsync** in PATH:
+  - macOS: pre-installed (`openrsync`)
+  - Windows: install [cwRsync](https://itefix.net/cwrsync), Git Bash rsync, or use WSL
+  - Linux: `sudo apt install rsync` (or your distro's package manager)
+- **OpenSSH 8.4+** in PATH (needed for `SSH_ASKPASS_REQUIRE=force`):
+  - macOS: pre-installed
+  - Windows 10 (1809+) / 11: pre-installed under `C:\Windows\System32\OpenSSH\`
+  - Linux: `sudo apt install openssh-client`
 - **VS Code Remote SSH** extension (for auto-detection; or configure host manually)
+- On Linux, `zenity` is used for the native file picker: `sudo apt install zenity`
 
 ## License
 

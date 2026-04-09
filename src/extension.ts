@@ -31,10 +31,20 @@ async function loadPassword(secrets: vscode.SecretStorage, host: string): Promis
 function createAskpassScript(context: vscode.ExtensionContext): string {
   const dir = context.globalStorageUri.fsPath;
   fs.mkdirSync(dir, { recursive: true });
+
+  if (process.platform === 'win32') {
+    // Windows: OpenSSH ships with Windows 10+. Use a .cmd batch script.
+    // `@echo off` suppresses command echo, `echo(%VAR%` prints even empty vars.
+    const scriptPath = path.join(dir, 'askpass.cmd');
+    const content = '@echo off\r\necho(%RSYNC_UPLOAD_PASSWORD%\r\n';
+    fs.writeFileSync(scriptPath, content);
+    return scriptPath;
+  }
+
+  // macOS / Linux: POSIX shell script
   const scriptPath = path.join(dir, 'askpass.sh');
   const content = '#!/bin/sh\nprintf %s "$RSYNC_UPLOAD_PASSWORD"\n';
   fs.writeFileSync(scriptPath, content, { mode: 0o700 });
-  // Ensure executable bit is set even if writeFileSync ignored mode
   try { fs.chmodSync(scriptPath, 0o700); } catch { /* ignore */ }
   return scriptPath;
 }
